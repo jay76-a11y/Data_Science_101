@@ -19,4 +19,15 @@ list_reviews = review_col.find('div', class_="jsx-2016320139 jsx-2462230538 list
 review = str(list_reviews.find('p', class_="text-content"))
 ```
 
+upon the analysis, it will be hard if I don't know the intention towards the reviews, which why later I will divide the reviews with each emotion extracted using huggingface pretrained model. But before jumps into that, we will look at the combined reviews's wordcloud as down below
+![all_wordcloud](all_wordcloud.png)
+
+# Emotions
+The emotion got extracted using huggingface model that then will show the motion each review has
+```python
+from transformers import pipeline
+
+pipe = pipeline("text-classification", model="akahana/indonesia-emotion-roberta", device=0)
+```
+
 
