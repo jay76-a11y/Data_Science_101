@@ -7,7 +7,7 @@ so with this understanding, I'm curios on why this product has so many user yet 
 # Data Scraping
 Data scraping simply done using the BeautifulSoup to gather all reviews as down below
 
-```
+```python
 url = "https://reviews.femaledaily.com/products/moisturizer/sun-protection-44/wardah/sun-block-spf-33?cat=&cat_id=0&age_range=&skin_type=&skin_tone=&skin_undertone=&hair_texture=&hair_type=&order=newest&page=1"
 headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/12.0'}
 r = requests.get(url, headers= headers)
@@ -18,4 +18,5 @@ review_col = class_1.find('div', id="review-col")
 list_reviews = review_col.find('div', class_="jsx-2016320139 jsx-2462230538 list-reviews") 
 review = str(list_reviews.find('p', class_="text-content"))
 ```
+
 
