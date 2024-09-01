@@ -30,4 +30,9 @@ from transformers import pipeline
 pipe = pipeline("text-classification", model="akahana/indonesia-emotion-roberta", device=0)
 ```
 
+# Result
+After dividing into each emotions, now I can understand why this product is widely used yet having a low review score which the cons I listed below
+- People don't like about the sticky texture of the product
+- People don't like about the white cast (white imprint in the skin after application)
+- People talks about the oily which may lead to this product is not suitable for people with oily skintype OR the skin texture texture after the application
 
