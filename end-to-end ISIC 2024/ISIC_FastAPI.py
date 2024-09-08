@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 import xgboost as xgb
 import torch
@@ -14,6 +14,15 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.base import TransformerMixin
 import os
 import numpy as np
+
+from pydantic import BaseModel
+from database import engine, SessionLocal
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import text
+
+import models_data_ISIC2024 as model_data_ISIC
+from models_data_ISIC2024 import ISICData
+from typing import Annotated
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -148,11 +157,75 @@ class dataCleaning():
         return self.df               
 
 
+##  SYNC DATA WITH SQL FOR RECOGNIZED PATIENT
 
-#############   APPLICATION     ######################################
+base_data_df = None
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        
+db_dependency = Annotated[Session, Depends(get_db)]
+
+def load_data_from_db(db: Session):
+    try:
+        face_data_records = db.query(ISICData).all()
+        data_dict = [record.__dict__ for record in face_data_records]
+        base_data_df = pd.DataFrame(data_dict)
+        if '_sa_instance_state' in base_data_df.columns:
+            base_data_df = base_data_df.drop(columns=['_sa_instance_state'])
+        print(base_data_df)
+        return base_data_df
+    except Exception as e:
+        print(f"Error loading data from the database: {e}")
+        return None
+
+#   to add data to db
+def add_db(data, db:db_dependency):
+    face_data = model_data_ISIC.ISICData(**data)
+    db.add(face_data)
+    db.commit()
+    
+def drop_duplicate_db(db : db_dependency):
+    stmt = text('''
+        WITH CTE AS (
+            SELECT id, ROW_NUMBER() OVER (PARTITION BY name, diagnose ORDER BY id) AS rn
+            FROM list_patient
+        )
+        DELETE FROM list_patient
+        WHERE id IN (
+            SELECT id FROM CTE WHERE rn > 1
+        )
+    ''')
+
+    # Execute the statement
+    db.execute(stmt)
+    db.commit()
+
+
+####################################################################
+########################## API ENDPOINT ############################
+####################################################################
+
 app = FastAPI()
+model_data_ISIC.Base.metadata.create_all(bind = engine)
 
-
+@app.on_event('startup')
+def startup_event(db: Session = Depends(get_db)):
+    global base_data_df
+    db = SessionLocal()
+    try:
+        drop_duplicate_db(db)
+        base_data_df = load_data_from_db(db)        
+        print("Data loaded successfully on startup.")
+    except Exception as e:
+        print(f"Error during startup data load: {e}")        
+    finally:
+        db.close()
+        
     
 @app.get('/')
 def root():
@@ -161,7 +234,9 @@ def root():
 
 ##  function to do the prediction
 @app.get('/pred')
-def prediction(path : str, data:str):
+def prediction(path : str, patient:str, data:str, db: Session = Depends(get_db)):
+    
+    global base_data_df
     
     data = data.split(',')
     data = [float(value.strip().strip('"')) if value.strip().strip('"').replace('.', '', 1).isdigit() else value.strip().strip('"') for value in data]
@@ -211,6 +286,36 @@ def prediction(path : str, data:str):
     
 
     result = xgb_mod.predict(xgb.DMatrix(test.values.reshape(1,-1), enable_categorical=True, feature_names=features_list))
+    
+    #   saving the data infromation  
+    
+    if base_data_df is None:
+        pat_new_data = {
+            'id' : 1,
+            'name':str(patient),
+            'diagnose':int(result[0])
+        }
+        
+        add_db(pat_new_data, db)        
+        base_data_df = pd.DataFrame({
+            'id' : [1],
+            'name':[str(patient)],
+            'diagnose':[int(result[0])]
+        })
+    else:
+        pat_new_data = {
+            'id' : len(base_data_df)+1,
+            'name':str(patient),
+            'diagnose':int(result[0])
+        }
+        
+        add_db(pat_new_data, db)
+        base_data_df_add = pd.DataFrame({
+            'id' : [len(base_data_df)+1],
+            'name':[str(patient)],
+            'diagnose':[int(result[0])]
+            })
+        base_data_df = pd.concat([base_data_df, base_data_df_add])
 
     return{'prediction':str(result[0])}
     
